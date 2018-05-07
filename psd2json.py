@@ -4,46 +4,21 @@ import sys
 import os
 import json
 import collections
+import codecs
+import copy
 
 
 buildpath = sys.argv[0]
-path, name = os.path.split(buildpath)
-psd = PSDImage.load(os.path.join(path,'my_image.psd'))
+psdName = sys.argv[1]
+# 路径
+path_work, _ = os.path.split(buildpath)
+path_outPut = os.path.join(path_work, 'output')
+path_res = os.path.join(path_work, 'res')
+path_template = os.path.join(path_work, 'template')
+# 配置文件的数据缓存
+dic_temp = {}
+dic_config = None
 
-
-#--------------------------------------------Png--------------------------
-#
-
-#导出psd中所有的图片, 主方法
-def outputPngs(psd):
-    _clearOutputDir()
-    _saveLayerAsPng(psd)
-
-#清空图片导出目录文件
-def _clearOutputDir():
-    files = os.listdir(os.path.join(path,'outputPngs'))
-    for file in files:
-        if file.endswith('.png'):
-            os.remove(os.path.join(path,'outputPngs/'+file))
-
-
-#拆分图片
-def _saveLayerAsPng(group):
-    for i in range(len(group.layers)):
-        if hasattr(group.layers[i],'layers'):
-            #层容器
-            _saveLayerAsPng(group.layers[i])
-        elif not group.layers[i].text_data:
-            #图片
-            layer_name = group.layers[i].name
-            if group.layers[i].bbox.width > 0 and group.layers[i].bbox.height > 0:
-                layer_name = layer_name.replace('/', '_') # 替换目录字符
-                pic_path = os.path.join(path,'outputPngs/%s.png' % layer_name)
-                if not os.path.exists(pic_path):
-                    layer_image = group.layers[i].as_PIL()
-                    layer_image.save(pic_path)
-            else:
-                print('error in outputPngs, %s size is unexpected: <=0' % layer_name)
 
 
 #------------------------------------------Json---------------------------
@@ -69,13 +44,19 @@ def psd2Json(psd):
             if child:
                 tempDic['widgetTree']['children'].append(child)
     
-    jsonStr = json.dumps(tempDic, indent=4)
+    jsonStr = json.dumps(tempDic, indent = 4, ensure_ascii = False)
     return jsonStr
 
 
 #搜索图片所在路径
 def _searchPngPath( pngName ):
-    return 'outputPngs/%s.png' % pngName #os.path.join(path, 'outputPngs/%s.png' % pngName)
+    configDic = _loadConfigData(psdName)
+    for path in configDic['searchPath']:
+        findPath = path + '/' + pngName + '.png')
+        if os.path.exists(os.path.join(configDic['sourceRootPath'], findPath)):
+            return findPath
+    print('Error: Cannot find the pic path of ', pngName + '.png')
+    return 'default.png'
 
 
 #转换头信息
@@ -88,6 +69,25 @@ def _decodeHeadInfo(psd):
     return tempDic
 
 
+#获取组件本地坐标
+def _getLocalPos(layer):
+    localPos = {'x1': layer.bbox.x1, 'x2': layer.bbox.x2, 'y1': layer.bbox.y1, 'y2': layer.bbox.y2}
+    #转换成cocos坐标系
+    rootHeight = layer._psd.header.height
+    localPos['y1'] = rootHeight - layer.bbox.y2
+    localPos['y2'] = rootHeight - layer.bbox.y1
+    parentCCX1 = layer.parent.bbox.x1
+    parentCCY1 = rootHeight - layer.parent.bbox.y2
+    #转换成相对于父节点的局部坐标
+    if not layer.parent.name == '_RootGroup':
+        localPos['x1'] = localPos['x1'] - parentCCX1
+        localPos['x2'] = localPos['x2'] - parentCCX1
+        localPos['y1'] = localPos['y1'] - parentCCY1
+        localPos['y2'] = localPos['y2'] - parentCCY1
+    #
+    return localPos
+
+
 #转换panel数据
 def _group2Panel(group, index):
     if not group.bbox:
@@ -95,17 +95,18 @@ def _group2Panel(group, index):
         return
     
     tempDic = _loadTemplateData('Panel')
+    localPos = _getLocalPos(group)
     transDic = {
         #common
         'name': 'pnl_%d' % index,
-        'ZOrder': index,
+        'ZOrder': (len(group.parent.layers) - index) * 5,
         'height': group.bbox.height,
         'width': group.bbox.width,
         'opacity': group.opacity,
         'tag': index,
         'visible': group.visible,
-        'x': group.bbox.x1 + tempDic['options']['anchorPointX'] * group.bbox.width,
-        'y': group.bbox.y1 + tempDic['options']['anchorPointY'] * group.bbox.height,
+        'x': localPos['x1'] + tempDic['options']['anchorPointX'] * group.bbox.width,
+        'y': localPos['y1'] + tempDic['options']['anchorPointY'] * group.bbox.height,
         #feature
     }
     #set value
@@ -116,17 +117,17 @@ def _group2Panel(group, index):
     for i in range(len(group.layers)):
         #Panel
         if hasattr(group.layers[i], 'layers'):
-            child = _group2Panel(group.layers[i], index)
+            child = _group2Panel(group.layers[i], i)
             if child:
                 tempDic['children'].append(child)
         #Label
         elif group.layers[i].text_data:
-            child = _layer2Label(group.layers[i], index)
+            child = _layer2Label(group.layers[i], i)
             if child:
                 tempDic['children'].append(child)
         #ImageView
         else:
-            child = _layer2ImageView(group.layers[i], index)
+            child = _layer2ImageView(group.layers[i], i)
             if child:
                 tempDic['children'].append(child)
 
@@ -136,20 +137,22 @@ def _group2Panel(group, index):
 #转换ImageView数据
 def _layer2ImageView(layer, index):
     tempDic = _loadTemplateData('ImageView')
+    localPos = _getLocalPos(layer)
+    layerName = layer.name.replace(' ', '') # 清除白空格
     transDic = {
         #common
         'name': 'img_%d' % index,
-        'ZOrder': index,
+        'ZOrder': (len(layer.parent.layers) - index) * 5,
         'height': layer.bbox.height,
         'width': layer.bbox.width,
         'opacity': layer.opacity,
         'tag': index,
         'visible': layer.visible,
-        'x': layer.bbox.x1 + tempDic['options']['anchorPointX'] * layer.bbox.width,
-        'y': layer.bbox.y1 + tempDic['options']['anchorPointY'] * layer.bbox.height,
+        'x': localPos['x1'] + tempDic['options']['anchorPointX'] * layer.bbox.width,
+        'y': localPos['y1'] + tempDic['options']['anchorPointY'] * layer.bbox.height,
         #feature
         'fileNameData': {
-            'path': _searchPngPath(layer.name),
+            'path': _searchPngPath(layerName),
             'plistFile': '',
             'resourceType': 0
         }
@@ -164,10 +167,11 @@ def _layer2ImageView(layer, index):
 #转换Label数据
 def _layer2Label(layer, index):
     tempDic = _loadTemplateData('Label')
+    localPos = _getLocalPos(layer)
     transDic = {
         #common
         'name': 'lbl_%d' % index,
-        'ZOrder': index,
+        'ZOrder': (len(layer.parent.layers) - index) * 5,
         'colorB': layer.text_data.font_color['B'],
         'colorG': layer.text_data.font_color['G'],
         'colorR': layer.text_data.font_color['R'],
@@ -176,8 +180,8 @@ def _layer2Label(layer, index):
         'opacity': layer.opacity,
         'tag': index,
         'visible': layer.visible,
-        'x': layer.bbox.x1 + tempDic['options']['anchorPointX'] * layer.bbox.width,
-        'y': layer.bbox.y1 + tempDic['options']['anchorPointY'] * layer.bbox.height,
+        'x': localPos['x1'] + tempDic['options']['anchorPointX'] * layer.bbox.width,
+        'y': localPos['y1'] + tempDic['options']['anchorPointY'] * layer.bbox.height,
         #feature
         'fontSize': layer.text_data.font_size,
         'text': layer.text_data.text,
@@ -191,20 +195,37 @@ def _layer2Label(layer, index):
 
 #加载模版数据
 def _loadTemplateData(tempName):
-    jsonFile = open(os.path.join(path + '/Template', tempName + '.temp'), 'r')
-    modeJsonStr = jsonFile.read()
-    jsonFile.close()
-    targetJsonObj = json.loads(modeJsonStr, object_pairs_hook=collections.OrderedDict)
-    return targetJsonObj
+    if not(tempName in dic_temp):
+        jsonFile = open(os.path.join(path_template, tempName + '.temp'), 'r')
+        jsonStr = jsonFile.read()
+        jsonFile.close()
+        dic_temp[tempName] = json.loads(jsonStr, object_pairs_hook=collections.OrderedDict)
+    return copy.deepcopy(dic_temp[tempName])
+
+
+#加载配置数据
+def _loadConfigData(pathName):
+    global dic_config
+    if not dic_config:
+        jsonFile = open(os.path.join(path_res, pathName + '.conf'), 'r')
+        jsonStr = jsonFile.read()
+        jsonFile.close()
+        dic_config = json.loads(jsonStr, object_pairs_hook=collections.OrderedDict)
+    return dic_config
 
 
 #---------------------------------------Main---------------------------------
 #
 
+#读取PSD
+psd = PSDImage.load(os.path.join(path_res, psdName + '.psd'))
+#生成Json
 jsonStr = psd2Json(psd)
-jsonFile = open(os.path.join(path,"output.json"), "w+")
+if not os.path.exists(os.path.join(path_outPut, psdName)):
+    os.makedirs(os.path.join(path_outPut, psdName))
+jsonFile = codecs.open(os.path.join(path_outPut, psdName, psdName + '.json'), "w+", 'utf-8')
 jsonFile.write(jsonStr)
 jsonFile.close()
-outputPngs(psd)
+
 
 

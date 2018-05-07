@@ -3,7 +3,7 @@
     "name": null,
     "children": [],
     "options": {
-        "_type": "LabelSurrogate:#EditorCommon.JsonModel.Component.GUI",
+        "__type": "LabelSurrogate:#EditorCommon.JsonModel.Component.GUI",
         "classname": "Label",
         "name": "lbl_index",
         "ZOrder": "index",

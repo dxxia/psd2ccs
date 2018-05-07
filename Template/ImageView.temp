@@ -3,7 +3,7 @@
     "name": null,
     "children": [],
     "options": {
-        "_type": "ImageViewSurrogate:#EditorCommon.JsonModel.Component.GUI",
+        "__type": "ImageViewSurrogate:#EditorCommon.JsonModel.Component.GUI",
         "classname": "ImageView",
         "name": "img_index",
         "ZOrder": "index",

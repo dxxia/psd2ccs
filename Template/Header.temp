@@ -1,7 +1,11 @@
 {
-    "classname": "Panel",
+    "classname": null,
     "name": null,
-    "animation": {},
+    "animation": {
+        "classname": null,
+        "name": "AnimationManager",
+        "actionlist": []
+    }, 
     "dataScale": 1,
     "designHeight": 640,
     "designWidth": 1136,
@@ -13,7 +17,7 @@
         "name": null,
         "children": [],
         "options": {
-            "_type": "PanelSurrogate:#EditorCommon.JsonModel.Component.GUI",
+            "__type": "PanelSurrogate:#EditorCommon.JsonModel.Component.GUI",
             "classname": "Panel",
             "name": "Root",
             "ZOrder": 0,
@@ -69,7 +73,7 @@
             "vectorX": 0,
             "vectorY": 0,
             "clipAble": false,
-            "layoutType": 3
+            "layoutType": 0
         }
     }
 }

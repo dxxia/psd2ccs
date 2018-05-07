@@ -39,9 +39,11 @@ class TextData(object):
         
     def get_font_info(self, engine_data):
         re_str_size = b'/RunArray.*?/FontSize\s+([^\s]+)'
+        compiled_pattern_size = re.compile(re_str_size, re.M|re.S)
+        re_size = compiled_pattern_size.search(engine_data)
         re_str_color = b'/RunArray.*?/Values.*?\[\s*([^\s\]]+)\s*([^\s\]]+)\s*([^\s\]]+)\s*([^\s\]]+)'
-        re_size = re.search(re_str_size, engine_data, re.M|re.S)
-        re_color = re.search(re_str_color,engine_data, re.M|re.S)
+        compiled_pattern_color = re.compile(re_str_color, re.M|re.S)
+        re_color = compiled_pattern_color.search(engine_data)
         color_a = float(re_color.group(1))
         color_a = int(round(color_a * 255))
         color_r = float(re_color.group(2))
@@ -385,6 +387,9 @@ def merge_layers(layers, respect_visibility=True, skip_layer=lambda layer: False
     for layer in reversed(layers):
 
         if layer is None:
+            continue
+        
+        if layer.bbox is None:
             continue
 
         if layer.bbox.width == 0 and layer.bbox.height == 0:

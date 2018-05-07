@@ -3,7 +3,7 @@
     "name": null,
     "children": [],
     "options": {
-        "_type": "PanelSurrogate:#EditorCommon.JsonModel.Component.GUI",
+        "__type": "PanelSurrogate:#EditorCommon.JsonModel.Component.GUI",
         "classname": "Panel",
         "name": "pnl_index",
         "ZOrder": "index",
