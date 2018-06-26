@@ -1,5 +1,6 @@
 # coding=UTF-8
 from psd_tools import PSDImage
+from PIL import Image
 import sys
 import os
 import json
@@ -49,14 +50,25 @@ def psd2Json(psd):
 
 
 #搜索图片所在路径
-def _searchPngPath( pngName ):
+def _searchPngPath(pngName, searchPathList = False):
+    findPath = 'default.png'
     configDic = _loadConfigData(psdName)
-    for path in configDic['searchPath']:
-        findPath = path + '/' + pngName + '.png')
-        if os.path.exists(os.path.join(configDic['sourceRootPath'], findPath)):
+    if not searchPathList:
+        searchPathList = configDic['searchPath']
+    for searchPath in searchPathList:
+        if os.path.exists(os.path.join(configDic['sourceRootPath'], searchPath, pngName + '.png')):
+            findPath = searchPath + '/' + pngName + '.png'
             return findPath
-    print('Error: Cannot find the pic path of ', pngName + '.png')
-    return 'default.png'
+        else:
+            subSearchPathList = []
+            for dirName in os.listdir(os.path.join(configDic['sourceRootPath'], searchPath)):
+                if os.path.isdir(os.path.join(configDic['sourceRootPath'], searchPath, dirName)):
+                    subSearchPathList.append(searchPath + '/' + dirName)
+            if len(subSearchPathList) > 0:
+                findPath = _searchPngPath(pngName, subSearchPathList)
+            if not(findPath == 'default.png'):
+                return findPath
+    return findPath
 
 
 #转换头信息
@@ -139,6 +151,19 @@ def _layer2ImageView(layer, index):
     tempDic = _loadTemplateData('ImageView')
     localPos = _getLocalPos(layer)
     layerName = layer.name.replace(' ', '') # 清除白空格
+    picPath = _searchPngPath(layerName)
+    capInsetsX = 0
+    capInsetsY = 0
+    if picPath == 'default.png':
+        print('Error: Cannot find the pic path of ', layerName + '.png')
+    else:
+        #预算九宫格数据
+        configDic = _loadConfigData(psdName)
+        if os.path.exists(os.path.join(configDic['sourceRootPath'], picPath)):
+            im = Image.open(os.path.join(configDic['sourceRootPath'], picPath))
+            imWidth, imHeight = im.size
+            capInsetsX = imWidth / 2
+            capInsetsY = imHeight / 2
     transDic = {
         #common
         'name': 'img_%d' % index,
@@ -151,8 +176,10 @@ def _layer2ImageView(layer, index):
         'x': localPos['x1'] + tempDic['options']['anchorPointX'] * layer.bbox.width,
         'y': localPos['y1'] + tempDic['options']['anchorPointY'] * layer.bbox.height,
         #feature
+        'capInsetsX': capInsetsX,
+        'capInsetsY': capInsetsY,
         'fileNameData': {
-            'path': _searchPngPath(layerName),
+            'path': picPath,
             'plistFile': '',
             'resourceType': 0
         }
@@ -196,7 +223,7 @@ def _layer2Label(layer, index):
 #加载模版数据
 def _loadTemplateData(tempName):
     if not(tempName in dic_temp):
-        jsonFile = open(os.path.join(path_template, tempName + '.temp'), 'r')
+        jsonFile = codecs.open(os.path.join(path_template, tempName + '.temp'), 'r', 'utf-8')
         jsonStr = jsonFile.read()
         jsonFile.close()
         dic_temp[tempName] = json.loads(jsonStr, object_pairs_hook=collections.OrderedDict)
@@ -207,7 +234,7 @@ def _loadTemplateData(tempName):
 def _loadConfigData(pathName):
     global dic_config
     if not dic_config:
-        jsonFile = open(os.path.join(path_res, pathName + '.conf'), 'r')
+        jsonFile = codecs.open(os.path.join(path_res, pathName + '.conf'), 'r', 'utf-8')
         jsonStr = jsonFile.read()
         jsonFile.close()
         dic_config = json.loads(jsonStr, object_pairs_hook=collections.OrderedDict)
